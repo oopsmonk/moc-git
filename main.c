@@ -75,6 +75,7 @@ struct parameters
 	char *toggle;
 	char *on;
 	char *off;
+	int volume_info; 
 };
 
 
@@ -340,6 +341,7 @@ static void show_usage (const char *prg_name) {
 "-o --on <controls>     Turn on a control (shuffle, autonext, repeat).\n"
 "-u --off <controls>    Turn off a control (shuffle, autonext, repeat).\n"
 "-t --toggle <controls> Toggle a control (shuffle, autonext, repeat).\n"
+"-g --vol-info          Get Mixer name and Volume value(0%~100%).\n"
 , prg_name);
 }
 
@@ -376,6 +378,8 @@ static void server_command (struct parameters *params, lists_t_strs *args)
 					params->formatted_into_param);
 		if (params->adj_volume)
 			interface_cmdline_adj_volume (sock, params->adj_volume);
+		if (params->volume_info)
+			interface_cmdline_volume_info (sock);
 		if (params->toggle)
 			interface_cmdline_set (sock, params->toggle, 2);
 		if (params->on)
@@ -613,6 +617,7 @@ static lists_t_strs *process_command_line (int argc, char *argv[],
 		{ "toggle",		1, NULL, 't' },
 		{ "on",			1, NULL, 'o' },
 		{ "off",		1, NULL, 'u' },
+		{ "vol-info",		0, NULL, 'g' },
 		{ 0, 0, 0, 0 }
 	};
 
@@ -623,7 +628,7 @@ static lists_t_strs *process_command_line (int argc, char *argv[],
 	assert (deferred != NULL);
 
 	while ((ret = getopt_long(argc, argv,
-					"VhDSFR:macpsxT:C:O:M:PUynArfiGelk:j:v:t:o:u:Q:q",
+					"VhDSFR:macpsxT:C:O:M:PUynArfiGelk:j:v:t:o:u:Q:qg",
 					long_options, &opt_index)) != -1) {
 		switch (ret) {
 			case 'V':
@@ -767,6 +772,10 @@ static lists_t_strs *process_command_line (int argc, char *argv[],
 			case 'Q':
 				params->formatted_into_param = optarg;
 				params->get_formatted_info = 1;
+				params->dont_run_iface = 1;
+				break;
+			case 'g':
+				params->volume_info = 1;
 				params->dont_run_iface = 1;
 				break;
 			default:
