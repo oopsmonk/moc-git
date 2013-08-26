@@ -4337,3 +4337,40 @@ void interface_cmdline_formatted_info (const int server_sock,
 	plist_free (queue);
 
 }
+
+void interface_cmdline_play_this (int server_sock, const char *file)
+{
+	struct plist plist;
+	srv_sock = server_sock;
+	plist_init (&plist);
+
+	send_int_to_srv (CMD_GET_SERIAL);
+	plist_set_serial (&plist, get_data_int());
+
+	/* the second condition will checks if the file exists */
+	if (!recv_server_plist(&plist)
+			&& file_type (create_file_name (PLAYLIST_FILE))
+			== F_PLAYLIST)
+		plist_load (&plist, create_file_name (PLAYLIST_FILE), cwd, 1);
+
+	send_int_to_srv (CMD_LOCK);
+	if (get_server_plist_serial() != plist_get_serial(&plist)) {
+		send_playlist (&plist, 1);
+		send_int_to_srv (CMD_PLIST_SET_SERIAL);
+		send_int_to_srv (plist_get_serial(&plist));
+	}
+	//Check if file in list
+	if(plist_find_fname(&plist, file) == -1){
+
+            printf ("Error: file not in playlist %s\n", file);
+
+        }else{
+            send_int_to_srv (CMD_PLAY);
+            send_str_to_srv (file);
+
+        }
+
+        send_int_to_srv (CMD_UNLOCK);
+	plist_free (&plist);
+
+}
