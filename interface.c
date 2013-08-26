@@ -3975,6 +3975,15 @@ void interface_cmdline_file_info (const int server_sock)
 		free (title);
 	}
 
+        //get Mixer and Volume
+        int val = 0 ;
+        char *name = NULL;
+        val = get_mixer_value ();
+        send_int_to_srv (CMD_GET_MIXER_CHANNEL_NAME);
+        name = get_data_str();
+        printf("Mixer: %s\nVolume: %d\n", name, val);
+        free(name);
+
 	plist_free (dir_plist);
 	plist_free (playlist);
 	plist_free (queue);
@@ -4100,21 +4109,6 @@ void interface_cmdline_adj_volume (int server_sock, const char *arg)
 		adjust_mixer(atoi(arg)); /* atoi can handle -  */
 	else if (arg[0] != 0)
 		set_mixer(atoi(arg));
-}
-
-//mixer name and current value
-void interface_cmdline_volume_info(int server_sock){
-
-        srv_sock = server_sock;
-
-	int val = 0 ;
-	char *name = NULL;
-	val = get_mixer_value ();
-
-	send_int_to_srv (CMD_GET_MIXER_CHANNEL_NAME);
-	name = get_data_str();
-
-        printf("Mixer: %s\nVolume: %d\n", name, val);
 }
 
 void interface_cmdline_set (int server_sock, char *arg, const int val)
