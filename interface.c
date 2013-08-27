@@ -4338,9 +4338,10 @@ void interface_cmdline_formatted_info (const int server_sock,
 
 }
 
-void interface_cmdline_play_this (int server_sock, const char *file)
+void interface_cmdline_play_num (int server_sock, const char *arg)
 {
 	struct plist plist;
+	int num = atoi(arg);
 	srv_sock = server_sock;
 	plist_init (&plist);
 
@@ -4360,9 +4361,10 @@ void interface_cmdline_play_this (int server_sock, const char *file)
 		send_int_to_srv (plist_get_serial(&plist));
 	}
 	//Check if file in list
-	if(plist_find_fname(&plist, file) == -1){
+	char * file = plist_get_file(&plist, num);
+	if(file == NULL){
 
-            printf ("Error: file not in playlist %s\n", file);
+            fprintf (stderr, "Error: Index %d is not valid\n", num);
 
         }else{
             send_int_to_srv (CMD_PLAY);
@@ -4372,5 +4374,10 @@ void interface_cmdline_play_this (int server_sock, const char *file)
 
         send_int_to_srv (CMD_UNLOCK);
 	plist_free (&plist);
+
+	if(file){
+	    free(file);
+	    file=NULL;
+        }
 
 }

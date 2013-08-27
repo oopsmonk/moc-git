@@ -75,7 +75,7 @@ struct parameters
 	char *toggle;
 	char *on;
 	char *off;
-	char *play_this;
+	char *play_num;
 };
 
 
@@ -341,7 +341,7 @@ static void show_usage (const char *prg_name) {
 "-o --on <controls>     Turn on a control (shuffle, autonext, repeat).\n"
 "-u --off <controls>    Turn off a control (shuffle, autonext, repeat).\n"
 "-t --toggle <controls> Toggle a control (shuffle, autonext, repeat).\n"
-"-E --playthis FILE     Play this file in current playlist, if file not in playlist print Error.\n"
+"-N --playnum index     Play file index in current playlist, if index not valid print Error.\n"
 , prg_name);
 }
 
@@ -384,8 +384,8 @@ static void server_command (struct parameters *params, lists_t_strs *args)
 			interface_cmdline_set (sock, params->on, 1);
 		if (params->off)
 			interface_cmdline_set (sock, params->off, 0);
-		if (params->play_this)
-			interface_cmdline_play_this (sock, params->play_this);
+		if (params->play_num)
+			interface_cmdline_play_num (sock, params->play_num);
                 if (params->exit) {
 			if (!send_int(sock, CMD_QUIT))
 				fatal ("Can't send command!");
@@ -617,7 +617,7 @@ static lists_t_strs *process_command_line (int argc, char *argv[],
 		{ "toggle",		1, NULL, 't' },
 		{ "on",			1, NULL, 'o' },
 		{ "off",		1, NULL, 'u' },
-		{ "playthis",		1, NULL, 'E' },
+		{ "playnum",		1, NULL, 'N' },
 		{ 0, 0, 0, 0 }
 	};
 
@@ -628,7 +628,7 @@ static lists_t_strs *process_command_line (int argc, char *argv[],
 	assert (deferred != NULL);
 
 	while ((ret = getopt_long(argc, argv,
-					"VhDSFR:macpsxT:C:O:M:PUynArfiGelk:j:v:t:o:u:Q:qE:",
+					"VhDSFR:macpsxT:C:O:M:PUynArfiGelk:j:v:t:o:u:Q:qN:",
 					long_options, &opt_index)) != -1) {
 		switch (ret) {
 			case 'V':
@@ -774,8 +774,8 @@ static lists_t_strs *process_command_line (int argc, char *argv[],
 				params->get_formatted_info = 1;
 				params->dont_run_iface = 1;
 				break;
-			case 'E' :
-				params->play_this = optarg;
+			case 'N' :
+				params->play_num = optarg;
 				params->dont_run_iface = 1;
 				break;
 			default:
