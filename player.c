@@ -31,6 +31,7 @@
 #include "files.h"
 #include "playlist.h"
 #include "md5.h"
+#include "protocol.h"
 
 #define PCM_BUF_SIZE		(32 * 1024)
 #define PREBUFFER_THRESHOLD	(16 * 1024)
@@ -851,6 +852,7 @@ void player (const char *file, const char *next_file, struct out_buf *out_buf)
 
 	if (file_type(file) == F_URL) {
 		status_msg ("Connecting...");
+		audio_set_state(STATE_NETBUFF);
 
 		LOCK (decoder_stream_mut);
 		decoder_stream = io_open (file, 1);

@@ -2419,6 +2419,9 @@ static void xterm_set_title (const int state, const char *title)
 			case STATE_PAUSE:
 				soft_write (1, "[pause]", sizeof("[pause]")-1);
 				break;
+			case STATE_NETBUFF:
+				soft_write (1, "[buffering]", sizeof("[buffering]")-1);
+				break;
 		}
 
         if (title)
@@ -2476,6 +2479,9 @@ static void screen_set_title (const int state, const char *title)
 				break;
 			case STATE_PAUSE:
 				soft_write (1, "[pause]", sizeof("[pause]")-1);
+				break;
+			case STATE_NETBUFF:
+				soft_write (1, "[buffering]", sizeof("[buffering]")-1);
 				break;
 		}
 
@@ -2842,6 +2848,8 @@ static void info_win_draw_state (const struct info_win *w)
 		case STATE_PAUSE:
 			state_symbol = "||";
 			break;
+		case STATE_NETBUFF:
+			break;
 		default:
 			abort (); /* BUG */
 	}
@@ -2885,7 +2893,7 @@ static void info_win_set_state (struct info_win *w, const int state)
 {
 	assert (w != NULL);
 	assert (state == STATE_PLAY || state == STATE_STOP
-			|| state == STATE_PAUSE);
+			|| state == STATE_PAUSE || state == STATE_NETBUFF);
 
 	w->state_play = state;
 	xterm_set_title (state, w->title);

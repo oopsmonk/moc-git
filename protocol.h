@@ -82,6 +82,7 @@ enum noblock_io_status
 #define STATE_PLAY	0x01
 #define STATE_STOP	0x02
 #define STATE_PAUSE	0x03
+#define STATE_NETBUFF	0x04 //network buffering.
 
 /* Definition of server commands. */
 #define CMD_PLAY	0x00 /* play the first element on the list */

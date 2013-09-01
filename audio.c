@@ -1036,6 +1036,13 @@ int audio_get_state ()
 	return state;
 }
 
+void audio_set_state (int st)
+{
+        prev_state = state;
+	state = st;
+	state_change ();
+}
+
 int audio_get_prev_state ()
 {
 	return prev_state;

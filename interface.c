@@ -3893,6 +3893,8 @@ void interface_cmdline_file_info (const int server_sock)
 			puts ("State: PLAY");
 		else if (curr_file.state == STATE_PAUSE)
 			puts ("State: PAUSE");
+		else if (curr_file.state == STATE_NETBUFF)
+			puts ("State: BUFFERING");
 
 		curr_file.file = get_curr_file ();
 
@@ -4226,6 +4228,8 @@ void interface_cmdline_formatted_info (const int server_sock,
 			str_info.state = "PLAY";
 		else if (curr_file.state == STATE_PAUSE)
 			str_info.state = "PAUSE";
+		else if (curr_file.state == STATE_NETBUFF)
+			str_info.state = "BUFFERING";
 
 		curr_file.file = get_curr_file ();
 
