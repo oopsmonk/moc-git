@@ -564,11 +564,18 @@ static void alsa_close ()
 		play_buf_chunks ();
 	}
 
+	/* Wait for ALSA buffers to empty.
+	 * If users report a delay between audio files then it is this
+	 * snd_pcm_nonblock(), snd_pcm_drain() sequence triggering bugs
+	 * in ALSA which is to blame.  (See commit log for r2553.) */
+	snd_pcm_nonblock (handle, 0);
+	snd_pcm_drain (handle);
+	snd_pcm_close (handle);
+	logit ("ALSA device closed");
+
 	params.format = 0;
 	params.rate = 0;
 	params.channels = 0;
-	snd_pcm_close (handle);
-	logit ("ALSA device closed");
 	handle = NULL;
 }
 
