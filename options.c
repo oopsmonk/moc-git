@@ -604,6 +604,8 @@ void options_init ()
 	                 CHECK_SYMBOL(3), "yes", "no", "IfAvailable");
 	add_bool ("ShowTimePercent", false);
 
+	add_list ("ScreenTerms", "screen:screen-w:vt100", CHECK_NONE);
+
 	add_list ("XTerms", "xterm:"
 	                    "xterm-colour:xterm-color:"
 	                    "xterm-256colour:xterm-256color:"
@@ -648,10 +650,10 @@ void options_init ()
 	                 "aac(aac,ffmpeg):m4a(ffmpeg):"
 	                 "mpc(musepack,*,ffmpeg):mpc8(musepack,*,ffmpeg):"
 	                 "sid(sidplay2):mus(sidplay2):"
-	                 "wav(sndfile,*,modplug,ffmpeg):"
+	                 "wav(sndfile,*,ffmpeg):"
 	                 "wv(wavpack,*,ffmpeg):"
 	                 "audio/aac(aac):audio/aacp(aac):audio/m4a(ffmpeg):"
-	                 "audio/wav(sndfile,*,modplug):"
+	                 "audio/wav(sndfile,*):"
 	                 "ogg(vorbis,ffmpeg):oga(vorbis,ffmpeg):ogv(ffmpeg):"
 	                 "opus(ffmpeg):"
 	                 "spx(speex):"
@@ -759,14 +761,14 @@ int options_check_int (const char *name, const int val)
  * other types. */
 int options_check_bool (const char *name, const bool val)
 {
-	int opt;
+	int opt, result = 0;
 
 	opt = find_option (name, OPTION_BOOL);
 	if (opt == -1)
 		return 0;
 	if (val == true || val == false)
-		return 1;
-	return 0;
+		result = 1;
+	return result;
 }
 
 /* Return 1 if a parameter to a string option is valid. */
@@ -926,7 +928,7 @@ static char *substitute_variable (const char *name_in, const char *value_in)
 				break;
 			}
 		}
-		if (value && strlen (value))
+		if (value && value[0])
 			lists_strs_append (strs, value);
 		else if (dflt)
 			lists_strs_append (strs, dflt);

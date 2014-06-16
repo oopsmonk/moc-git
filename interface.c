@@ -106,18 +106,20 @@ static time_t last_menu_move_time = (time_t)0;
 
 static void sig_quit (int sig ATTR_UNUSED)
 {
+	log_signal (sig);
 	want_quit = QUIT_CLIENT;
 }
 
-static void sig_interrupt (int sig)
+static void sig_interrupt (int sig ATTR_UNUSED)
 {
-	logit ("Got signal %d: interrupt the operation", sig);
+	log_signal (sig);
 	wants_interrupt = 1;
 }
 
 #ifdef SIGWINCH
 static void sig_winch (int sig ATTR_UNUSED)
 {
+	log_signal (sig);
 	want_resize = 1;
 }
 #endif
@@ -236,6 +238,7 @@ static void *get_event_data (const int type)
 		case EV_PLIST_DEL:
 		case EV_QUEUE_DEL:
 		case EV_STATUS_MSG:
+		case EV_SRV_ERROR:
 			return get_str_from_srv ();
 		case EV_FILE_TAGS:
 			return recv_tags_data_from_srv ();
@@ -254,7 +257,8 @@ static void wait_for_data ()
 
 	do {
 		event = get_int_from_srv ();
-
+		if (event == EV_EXIT)
+			interface_fatal ("The server exited!");
 		if (event != EV_DATA)
 			event_push (&events, event, get_event_data(event));
 	 } while (event != EV_DATA);
@@ -590,14 +594,15 @@ static int ask_for_tags (const struct plist *plist, const int tags_sel)
 static void interface_message (const char *format, ...)
 {
 	va_list va;
-	char message[128];
+	char *msg;
 
 	va_start (va, format);
-	vsnprintf (message, sizeof(message), format, va);
-	message[sizeof(message)-1] = 0;
+	msg = format_msg_va (format, va);
 	va_end (va);
 
-	iface_message (message);
+	iface_message (msg);
+
+	free (msg);
 }
 
 /* Update tags (and titles) for the given item on the playlist with new tags. */
@@ -909,14 +914,9 @@ static void event_queue_add (const struct plist_item *item)
 }
 
 /* Get error message from the server and show it. */
-static void update_error ()
+static void update_error (char *err)
 {
-	char *err;
-
-	send_int_to_srv (CMD_GET_ERROR);
-	err = get_data_str ();
 	error ("%s", err);
-	free (err);
 }
 
 /* Send the playlist to the server to be forwarded to another client. */
@@ -1126,7 +1126,7 @@ static void server_event (const int event, void *data)
 			update_channels ();
 			break;
 		case EV_SRV_ERROR:
-			update_error ();
+			update_error ((char *)data);
 			break;
 		case EV_OPTIONS:
 			get_server_options ();
@@ -1529,7 +1529,7 @@ static void process_multiple_args (lists_t_strs *args)
 		char path[2 * PATH_MAX];
 
 		arg = lists_strs_at (args, ix);
-			dir = is_dir (arg);
+		dir = is_dir (arg);
 
 		if (is_url (arg)) {
 			strncpy (path, arg, sizeof (path));
@@ -1545,8 +1545,10 @@ static void process_multiple_args (lists_t_strs *args)
 
 		if (dir == 1)
 			read_directory_recurr (path, playlist);
-		else if (!dir && (is_sound_file (path) || is_url (path)))
-			plist_add (playlist, path);
+		else if (!dir && (is_sound_file (path) || is_url (path))) {
+			if (plist_find_fname (playlist, path) == -1)
+				plist_add (playlist, path);
+		}
 		else if (is_plist_file (path)) {
 			char *plist_dir, *slash;
 
@@ -1901,8 +1903,7 @@ static void add_file_plist ()
 	char *file;
 
 	if (iface_in_plist_menu()) {
-		error ("Can't add to the playlist a file from the "
-				"playlist.");
+		error ("Can't add to the playlist a file from the playlist.");
 		return;
 	}
 
@@ -2520,8 +2521,7 @@ static void delete_item ()
 	char *file;
 
 	if (!iface_in_plist_menu()) {
-		error ("You can only delete an item from the "
-				"playlist.");
+		error ("You can only delete an item from the playlist.");
 		return;
 	}
 
@@ -2694,18 +2694,19 @@ static void cmd_next ()
 	}
 }
 
-/* Add themes found in the directory to the theme selection menu.
- * Return the number of items added. */
-static int add_themes_to_menu (const char *themes_dir)
+/* Add themes found in the directory to the list of theme files. */
+static void add_themes_to_list (lists_t_strs *themes, const char *themes_dir)
 {
 	DIR *dir;
 	struct dirent *entry;
-	int count = 0;
+
+	assert (themes);
+	assert (themes_dir);
 
 	if (!(dir = opendir(themes_dir))) {
 		logit ("Can't open themes directory %s: %s", themes_dir,
 				strerror(errno));
-		return 0;
+		return;
 	}
 
 	while ((entry = readdir(dir))) {
@@ -2722,30 +2723,70 @@ static int add_themes_to_menu (const char *themes_dir)
 					entry->d_name) >= (int)sizeof(file))
 			continue;
 
-		iface_add_file (file, entry->d_name, F_THEME);
-		count++;
+		lists_strs_append (themes, file);
 	}
 
 	closedir (dir);
+}
 
-	return count;
+/* Compare two pathnames based on filename. */
+static int themes_cmp (const void *a, const void *b)
+{
+	int result;
+	char *sa = *(char **)a;
+	char *sb = *(char **)b;
+
+	result = strcoll (strrchr (sa, '/') + 1, strrchr (sb, '/') + 1);
+	if (result == 0)
+		result = strcoll (sa, sb);
+
+	return result;
+}
+
+/* Add themes found in the directories to the theme selection menu.
+ * Return the number of items added. */
+static int add_themes_to_menu (const char *user_themes,
+                               const char *system_themes)
+{
+	int ix;
+	lists_t_strs *themes;
+
+	assert (user_themes);
+	assert (system_themes);
+
+	themes = lists_strs_new (16);
+	add_themes_to_list (themes, user_themes);
+	add_themes_to_list (themes, system_themes);
+	lists_strs_sort (themes, themes_cmp);
+
+	for (ix = 0; ix < lists_strs_size (themes); ix += 1) {
+		char *file;
+
+		file = lists_strs_at (themes, ix);
+		iface_add_file (file, strrchr (file, '/') + 1, F_THEME);
+	}
+
+	lists_strs_free (themes);
+
+	return ix;
 }
 
 static void make_theme_menu ()
 {
 	iface_switch_to_theme_menu ();
 
-	if (add_themes_to_menu (create_file_name("themes"))
-			+ add_themes_to_menu (SYSTEM_THEMES_DIR) == 0) {
+	if (add_themes_to_menu (create_file_name ("themes"),
+	                        SYSTEM_THEMES_DIR) == 0) {
 		if (!cwd[0])
-
-			/* we were at the playlist from the startup */
-			enter_first_dir ();
+			enter_first_dir (); /* we were at the playlist from the startup */
 		else
 			iface_switch_to_dir ();
 
 		error ("No themes found.");
 	}
+
+	iface_update_theme_selection (get_current_theme ());
+	iface_refresh ();
 }
 
 /* Use theme from the currently selected file. */
@@ -2759,6 +2800,7 @@ static void use_theme ()
 		return;
 
 	themes_switch_theme (file);
+	iface_update_attrs ();
 	iface_refresh ();
 
 	free (file);
@@ -3002,14 +3044,14 @@ static void run_external_cmd (char **args, const int arg_num ATTR_UNUSED)
 			fprintf (stderr, "\nError executing %s: %s\n", args[0],
 					strerror(errno));
 			sleep (2);
-			exit (1);
+			exit (EXIT_FAILURE);
 		}
 
 		/* parent */
 		waitpid (child, &status, 0);
 		if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
-			fprintf (stderr, "\nCommand exited with error "
-					"(status %d).\n", WEXITSTATUS(status));
+			fprintf (stderr, "\nCommand exited with error (status %d).\n",
+			                 WEXITSTATUS(status));
 			sleep (2);
 		}
 		iface_restore ();
@@ -3027,7 +3069,7 @@ static void exec_custom_command (const char *option)
 	assert (option != NULL);
 
 	cmd = options_get_str (option);
-	if (!cmd || strlen (cmd) == 0) {
+	if (!cmd || !cmd[0]) {
 		error ("%s is not set", option);
 		return;
 	}
@@ -3481,7 +3523,7 @@ void init_interface (const int sock, const int logging, lists_t_strs *args)
 			if (!options_get_int("SyncPlaylist")
 					|| !use_server_playlist())
 				load_playlist ();
-			send_int_to_srv (CMD_SEND_EVENTS);
+			send_int_to_srv (CMD_SEND_PLIST_EVENTS);
 		}
 		else if (options_get_int("SyncPlaylist")) {
 			struct plist tmp_plist;
@@ -3494,7 +3536,7 @@ void init_interface (const int sock, const int logging, lists_t_strs *args)
 			plist_init (&tmp_plist);
 			get_server_playlist (&tmp_plist);
 
-			send_int_to_srv (CMD_SEND_EVENTS);
+			send_int_to_srv (CMD_SEND_PLIST_EVENTS);
 
 			send_int_to_srv (CMD_LOCK);
 			send_int_to_srv (CMD_CLI_PLIST_CLEAR);
@@ -3518,7 +3560,7 @@ void init_interface (const int sock, const int logging, lists_t_strs *args)
 		}
 	}
 	else {
-		send_int_to_srv (CMD_SEND_EVENTS);
+		send_int_to_srv (CMD_SEND_PLIST_EVENTS);
 		if (!options_get_int("SyncPlaylist")
 				|| !use_server_playlist())
 			load_playlist ();
@@ -3595,8 +3637,7 @@ static void save_curr_dir ()
 	FILE *dir_file;
 
 	if (!(dir_file = fopen(create_file_name("last_directory"), "w"))) {
-		error ("Can't save current directory: %s",
-				strerror(errno));
+		error ("Can't save current directory: %s", strerror(errno));
 		return;
 	}
 
@@ -3646,17 +3687,16 @@ void interface_end ()
 
 void interface_fatal (const char *format, ...)
 {
-	char err_msg[512];
+	char *msg;
 	va_list va;
 
 	va_start (va, format);
-	vsnprintf (err_msg, sizeof(err_msg), format, va);
-	err_msg[sizeof(err_msg) - 1] = 0;
+	msg = format_msg_va (format, va);
 	va_end (va);
 
-	logit ("FATAL ERROR: %s", err_msg);
+	logit ("FATAL ERROR: %s", msg);
 	windows_end ();
-	fatal ("%s", err_msg);
+	fatal ("%s", msg);
 }
 
 void interface_error (const char *msg)

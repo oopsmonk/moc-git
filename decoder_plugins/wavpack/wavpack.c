@@ -22,6 +22,7 @@
 #endif
 
 #include <string.h>
+#include <stdint.h>
 #include <assert.h>
 #include <wavpack/wavpack.h>
 
@@ -108,8 +109,7 @@ static int wav_seek (void *prv_data, int sec)
 	if ( WavpackSeekSample (data->wpc, sec * data->sample_rate) )
 		return sec;
 
-	decoder_error (&data->error, ERROR_FATAL, 0,
-					"Fatal seeking error!");
+	decoder_error (&data->error, ERROR_FATAL, 0, "Fatal seeking error!");
 	return -1;
 }
 

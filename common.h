@@ -24,6 +24,7 @@ extern "C" {
 #  define PATH_MAX	4096             /* Suppose, we have 4096 */
 # endif
 #endif
+
 /* Exit status on fatal exit. */
 #define EXIT_FATAL	2
 
@@ -90,7 +91,6 @@ void *xcalloc (size_t nmemb, size_t size);
 void *xrealloc (void *ptr, const size_t size);
 char *xstrdup (const char *s);
 
-char *str_repl (char *target, const char *oldstr, const char *newstr);
 
 #ifdef NDEBUG
 #define fatal(format, ...) \
@@ -113,7 +113,10 @@ void error (const char *format, ...);
 #endif
 
 void set_me_server ();
+char *str_repl (char *target, const char *oldstr, const char *newstr);
 char *trim (const char *src, size_t len);
+char *format_msg (const char *format, ...);
+char *format_msg_va (const char *format, va_list va);
 bool is_valid_symbol (const char *candidate);
 char *create_file_name (const char *file);
 void sec_to_min (char *buff, const int seconds);

@@ -80,8 +80,7 @@ enum noblock_io_status get_int_noblock (int sock, int *i)
 	res = recv (sock, i, sizeof(int), 0);
 	flags &= ~O_NONBLOCK;
 	if (fcntl(sock, F_SETFL, flags) == -1)
-		fatal ("Restoring flags for socket failed: %s",
-				strerror(errno));
+		fatal ("Restoring flags for socket failed: %s", strerror(errno));
 
 	if (res == sizeof(int))
 		return NB_IO_OK;
@@ -117,7 +116,9 @@ static int get_long (int sock, long *i)
 
 	return res == sizeof(long) ? 1 : 0;
 }
+#endif
 
+#if 0
 /* Send a long value to the socket, return == 0 on error */
 static int send_long (int sock, long i)
 {
@@ -423,9 +424,9 @@ int send_tags (int sock, const struct file_tags *tags)
 	return res;
 }
 
-/* Get a playlist item from the server. If empty item->file is an empty string,
- * end of playlist arrived (empty item). The memory is malloc()ed. Return NULL
- * on error. */
+/* Get a playlist item from the server.
+ * The end of the playlist is indicated by item->file being an empty string.
+ * The memory is malloc()ed.  Returns NULL on error. */
 struct plist_item *recv_item (int sock)
 {
 	struct plist_item *item = plist_new_item ();
@@ -470,7 +471,6 @@ struct plist_item *recv_item (int sock)
 			free (item);
 			return NULL;
 		}
-
 	}
 
 	return item;
@@ -595,7 +595,7 @@ void free_event_data (const int type, void *data)
 	else if (type == EV_FILE_TAGS)
 		free_tag_ev_data ((struct tag_ev_response *)data);
 	else if (type == EV_PLIST_DEL || type == EV_STATUS_MSG
-			|| type == EV_QUEUE_DEL)
+			|| type == EV_SRV_ERROR || type == EV_QUEUE_DEL)
 		free (data);
 	else if (type == EV_PLIST_MOVE || type == EV_QUEUE_MOVE)
 		free_move_ev_data ((struct move_ev_data *)data);
@@ -664,6 +664,7 @@ static struct packet_buf *make_event_packet (const struct event *e)
 
 	if (e->type == EV_PLIST_DEL
 			|| e->type == EV_QUEUE_DEL
+			|| e->type == EV_SRV_ERROR
 			|| e->type == EV_STATUS_MSG) {
 		assert (e->data != NULL);
 		packet_buf_add_str (b, e->data);

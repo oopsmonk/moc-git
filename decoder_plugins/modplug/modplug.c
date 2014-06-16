@@ -24,6 +24,7 @@
 
 #include <ctype.h> // for toupper
 #include <string.h>
+#include <limits.h>
 #include <assert.h>
 #include <libmodplug/modplug.h>
 
@@ -118,7 +119,14 @@ static struct modplug_data *make_modplug_data(const char *file) {
     return data;
   }
 
-  ssize_t size = io_file_size(s);
+  off_t size = io_file_size(s);
+
+  if (!RANGE(1, size, INT_MAX)) {
+    decoder_error(&data->error, ERROR_FATAL, 0,
+                  "Module size unsuitable for loading: %s", file);
+    io_close(s);
+    return data;
+  }
 
 //  if(size>MAXMODSIZE) {
 //    io_close(s);
@@ -126,12 +134,12 @@ static struct modplug_data *make_modplug_data(const char *file) {
 //    return data;
 //  }
 
-  data->filedata = (char *)xmalloc(size);
+  data->filedata = (char *)xmalloc((size_t)size);
 
-  io_read(s, data->filedata, size);
+  io_read(s, data->filedata, (size_t)size);
   io_close(s);
 
-  data->modplugfile=ModPlug_Load(data->filedata, size);
+  data->modplugfile=ModPlug_Load(data->filedata, (int)size);
 
   if(data->modplugfile==NULL) {
     free(data->filedata);
@@ -254,6 +262,9 @@ static void modplug_get_name (const char *file, char buf[4])
 
 static int modplug_our_format_ext(const char *ext)
 {
+  // Do not include non-module formats in this list (even if
+  // ModPlug supports them).  Doing so may cause memory exhaustion
+  // in make_modplug_data().
   return
     !strcasecmp (ext, "NONE") ||
     !strcasecmp (ext, "MOD") ||
@@ -266,7 +277,6 @@ static int modplug_our_format_ext(const char *ext)
     !strcasecmp (ext, "ULT") ||
     !strcasecmp (ext, "STM") ||
     !strcasecmp (ext, "FAR") ||
-    !strcasecmp (ext, "WAV") ||
     !strcasecmp (ext, "AMF") ||
     !strcasecmp (ext, "AMS") ||
     !strcasecmp (ext, "DSM") ||

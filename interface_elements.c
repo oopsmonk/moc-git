@@ -271,7 +271,7 @@ static struct info_win
 static bool has_xterm = false;
 
 /* Are we running inside screen? */
-static int has_screen = 0;
+static bool has_screen = false;
 
 /* Was the interface initialized? */
 static int iface_initialized = 0;
@@ -954,8 +954,7 @@ static bool parse_layout (struct main_win_layout *l, lists_t_strs *fmt)
 			goto err;
 		}
 		if (p.y + p.height > LINES - 4) {
-			logit ("Y + height is more than LINES - 4 (%d)",
-					LINES - 4);
+			logit ("Y + height is more than LINES - 4 (%d)", LINES - 4);
 			goto err;
 		}
 
@@ -1041,7 +1040,7 @@ static char *make_menu_title (const char *plist_title,
 				char *old_title = title;
 
 				title = xstrdup (slash + 1);
-		                free (old_title);
+				free (old_title);
 			}
 		}
 	}
@@ -1385,12 +1384,12 @@ static char *side_menu_get_curr_file (const struct side_menu *m)
 static struct side_menu *find_side_menu (struct main_win *w,
 		const enum side_menu_type type)
 {
-	int i;
+	size_t ix;
 
 	assert (w != NULL);
 
-	for (i = 0; i < (int)ARRAY_SIZE(w->menus); i++) {
-		struct side_menu *m = &w->menus[i];
+	for (ix = 0; ix < ARRAY_SIZE(w->menus); ix += 1) {
+		struct side_menu *m = &w->menus[ix];
 
 		if (m->visible && m->type == type)
 			return m;
@@ -1811,9 +1810,10 @@ static void main_win_draw_lyrics_screen (const struct main_win *w)
 	}
 	lists_strs_free (lyrics_array);
 }
+
 static void main_win_draw (struct main_win *w)
 {
-	int i;
+	size_t ix;
 
 	if (w->in_help)
 		main_win_draw_help_screen (w);
@@ -1825,9 +1825,9 @@ static void main_win_draw (struct main_win *w)
 		werase (w->win);
 
 		/* Draw all visible menus.  Draw the selected menu last. */
-		for (i = 0; i < (int)ARRAY_SIZE(w->menus); i++)
-			if (w->menus[i].visible && i != w->selected_menu)
-				side_menu_draw (&w->menus[i], 0);
+		for (ix = 0; ix < ARRAY_SIZE(w->menus); ix += 1)
+			if (w->menus[ix].visible && ix != (size_t)w->selected_menu)
+				side_menu_draw (&w->menus[ix], 0);
 
 		side_menu_draw (&w->menus[w->selected_menu], 1);
 	}
@@ -1899,20 +1899,20 @@ static void main_win_update_dir_content (struct main_win *w,
 static void main_win_switch_to (struct main_win *w,
 		const enum side_menu_type menu)
 {
-	int i;
+	size_t ix;
 
 	assert (w != NULL);
 
 	if (w->selected_menu == 2) /* if the themes menu is selected */
 		side_menu_destroy (&w->menus[2]);
 
-	for (i = 0; i < (int)ARRAY_SIZE(w->menus); i++)
-		if (w->menus[i].type == menu) {
-			w->selected_menu = i;
+	for (ix = 0; ix < ARRAY_SIZE(w->menus); ix += 1)
+		if (w->menus[ix].type == menu) {
+			w->selected_menu = ix;
 			break;
 		}
 
-	assert (i < (int)ARRAY_SIZE(w->menus));
+	assert (ix < ARRAY_SIZE(w->menus));
 
 	main_win_draw (w);
 }
@@ -2034,7 +2034,7 @@ static void main_win_update_item (struct main_win *w,
 /* Mark the played file on all lists of files or unmark it when file is NULL. */
 static void main_win_set_played_file (struct main_win *w, const char *file)
 {
-	int i;
+	size_t ix;
 
 	assert (w != NULL);
 
@@ -2042,8 +2042,8 @@ static void main_win_set_played_file (struct main_win *w, const char *file)
 		free (w->curr_file);
 	w->curr_file = xstrdup (file);
 
-	for (i = 0; i < (int)ARRAY_SIZE(w->menus); i++) {
-		struct side_menu *m = &w->menus[i];
+	for (ix = 0; ix < ARRAY_SIZE(w->menus); ix += 1) {
+		struct side_menu *m = &w->menus[ix];
 
 		if (m->visible && (m->type == MENU_DIR
 					|| m->type == MENU_PLAYLIST)) {
@@ -2315,16 +2315,16 @@ static void main_win_make_visible (struct main_win *w,
 
 static void main_win_update_show_time (struct main_win *w)
 {
-	int i;
+	size_t ix;
 
 	assert (w != NULL);
 
-	for (i = 0; i < (int)ARRAY_SIZE(w->menus); i++) {
-		struct side_menu *m = &w->menus[i];
+	for (ix = 0; ix < ARRAY_SIZE(w->menus); ix += 1) {
+		struct side_menu *m = &w->menus[ix];
 
 		if (m->visible && (m->type == MENU_DIR
 					|| m->type == MENU_PLAYLIST))
-			side_menu_update_show_time (&w->menus[i]);
+			side_menu_update_show_time (&w->menus[ix]);
 	}
 
 	main_win_draw (w);
@@ -2341,16 +2341,16 @@ static void main_win_select_file (struct main_win *w, const char *file)
 
 static void main_win_update_show_format (struct main_win *w)
 {
-	int i;
+	size_t ix;
 
 	assert (w != NULL);
 
-	for (i = 0; i < (int)ARRAY_SIZE(w->menus); i++) {
-		struct side_menu *m = &w->menus[i];
+	for (ix = 0; ix < ARRAY_SIZE(w->menus); ix += 1) {
+		struct side_menu *m = &w->menus[ix];
 
 		if (m->visible && (m->type == MENU_DIR
 					|| m->type == MENU_PLAYLIST))
-			side_menu_update_show_format (&w->menus[i]);
+			side_menu_update_show_format (&w->menus[ix]);
 	}
 
 	main_win_draw (w);
@@ -2453,13 +2453,16 @@ static void xterm_clear_title ()
 /* Set the has_screen variable. */
 static void detect_screen ()
 {
-	char *window;
-	char *term;
+	char *term, *window;
 
-	if (((term = getenv("TERM")) && !strcmp(term, "screen"))
-	   || ((window = getenv("WINDOW")) && isdigit(*window)))
+	term = getenv ("TERM");
+	window = getenv ("WINDOW");
+	if (term && window && isdigit (*window)) {
+		lists_t_strs *screen_terms;
 
-		has_screen = 1;
+		screen_terms = options_get_list ("ScreenTerms");
+		has_screen = lists_strs_exists (screen_terms, term);
+	}
 }
 
 #define SCREEN_TITLE_START "\033k"
@@ -3783,6 +3786,67 @@ void iface_set_dir_content (const enum iface_menu iface_menu,
 	iface_refresh_screen ();
 }
 
+/* Refreshes all menu structs with updated theme attributes. */
+void iface_update_attrs ()
+{
+	size_t ix;
+
+	info_win.mixer_bar.fill_color = get_color (CLR_MIXER_BAR_FILL);
+	info_win.mixer_bar.empty_color = get_color (CLR_MIXER_BAR_EMPTY);
+	info_win.time_bar.fill_color = get_color (CLR_TIME_BAR_FILL);
+	info_win.time_bar.empty_color = get_color (CLR_TIME_BAR_EMPTY);
+
+	for (ix = 0; ix < ARRAY_SIZE(main_win.menus); ix += 1) {
+		int item_num;
+		struct side_menu *m = &main_win.menus[ix];
+		struct menu *menu = m->menu.list.main;
+		struct menu_item *mi;
+
+		if (m->type == MENU_DIR || m->type == MENU_PLAYLIST) {
+			menu_set_info_attr_normal (menu, get_color (CLR_MENU_ITEM_INFO));
+			menu_set_info_attr_sel (menu, get_color (CLR_MENU_ITEM_INFO_SELECTED));
+			menu_set_info_attr_marked (menu, get_color (CLR_MENU_ITEM_INFO_MARKED));
+			menu_set_info_attr_sel_marked (menu, get_color (CLR_MENU_ITEM_INFO_MARKED_SELECTED));
+
+			for (mi = menu->items, item_num = 0;
+			     mi && item_num < menu->nitems;
+			     mi = mi->next, item_num += 1) {
+				if (mi->type == F_DIR) {
+					menu_item_set_attr_normal (mi, get_color (CLR_MENU_ITEM_DIR));
+					menu_item_set_attr_sel (mi, get_color (CLR_MENU_ITEM_DIR_SELECTED));
+				}
+				else if (mi->type == F_PLAYLIST) {
+					menu_item_set_attr_normal (mi, get_color (CLR_MENU_ITEM_PLAYLIST));
+					menu_item_set_attr_sel (mi, get_color (CLR_MENU_ITEM_PLAYLIST_SELECTED));
+				}
+				else {
+					menu_item_set_attr_normal (mi, get_color (CLR_MENU_ITEM_FILE));
+					menu_item_set_attr_sel (mi, get_color (CLR_MENU_ITEM_FILE_SELECTED));
+				}
+			}
+		}
+		else {
+			menu_set_info_attr_normal (menu, get_color (CLR_MENU_ITEM_FILE));
+			menu_set_info_attr_sel (menu, get_color (CLR_MENU_ITEM_FILE_SELECTED));
+
+			for (mi = menu->items, item_num = 0;
+			     mi && item_num < menu->nitems;
+			     mi = mi->next, item_num += 1) {
+				menu_item_set_attr_normal (mi, get_color (CLR_MENU_ITEM_FILE));
+				menu_item_set_attr_sel (mi, get_color (CLR_MENU_ITEM_FILE_SELECTED));
+			}
+		}
+	}
+}
+
+void iface_update_theme_selection (const char *file)
+{
+    /* menus[2] is theme menu. */
+    assert (main_win.menus[2].menu.list.main->selected);
+
+    menu_setcurritem_file (main_win.menus[2].menu.list.main, file);
+}
+
 /* Like iface_set_dir_content(), but before replacing the menu content, save
  * the menu state (selected file, view position) and restore it after making
  * a new menu. */
@@ -3878,9 +3942,11 @@ void iface_get_key (struct iface_key *k)
 		if (wget_wch(main_win.win, &ch) == ERR)
 			interface_fatal ("wget_wch() failed!");
 #endif
+
 		/* Recognize meta sequences */
 		if (ch == KEY_ESCAPE) {
-			if((meta = wgetch(main_win.win)) != ERR)
+			meta = wgetch (main_win.win);
+			if (meta != ERR)
 				ch = meta | META_KEY_FLAG;
 			k->type = IFACE_KEY_FUNCTION;
 			k->key.func = ch;

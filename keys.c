@@ -27,6 +27,8 @@
 
 #include <stdio.h>
 #include <errno.h>
+#include <unistd.h>
+#include <ctype.h>
 
 #define DEBUG
 
@@ -338,7 +340,7 @@ static struct command commands[] = {
 	{
 		KEY_CMD_GO_MUSIC_DIR,
 		"go_to_music_directory",
-		"Go to the music directory (requires an entry in the config)",
+		"Go to the music directory (requires config option)",
 		CON_MENU,
 		{ 'm', -1 },
 		1
@@ -394,7 +396,7 @@ static struct command commands[] = {
 	{
 		KEY_CMD_GO_TO_PLAYING_FILE,
 		"go_to_playing_file",
-		"Go to the directory containing the currently played file",
+		"Go to the currently playing file's directory",
 		CON_MENU,
 		{ 'G', -1 },
 		1
@@ -698,7 +700,7 @@ static struct command commands[] = {
  	{
  		KEY_CMD_TOGGLE_MAKE_MONO,
  		"toggle_make_mono",
- 		"Toggle mono-mixing",
+ 		"Toggle mono-mixing (when softmixer enabled)",
  		CON_MENU,
  		{ 'J', -1 },
  		1
@@ -884,8 +886,8 @@ static struct special_keys
 	{ "F12",		KEY_F(12) }
 };
 
-#define COMMANDS_NUM		(sizeof(commands)/sizeof(commands[0]))
-#define SPECIAL_KEYS_NUM	(sizeof(special_keys)/sizeof(special_keys[0]))
+#define COMMANDS_NUM		(ARRAY_SIZE(commands))
+#define SPECIAL_KEYS_NUM	(ARRAY_SIZE(special_keys))
 
 /* Number of chars from the left where the help message starts
  * (skipping the key list). */
@@ -893,21 +895,24 @@ static struct special_keys
 
 static char *help[COMMANDS_NUM];
 
-enum key_cmd get_key_cmd (const enum key_context context, const struct iface_key *key)
+enum key_cmd get_key_cmd (const enum key_context context,
+                          const struct iface_key *key)
 {
 	int k;
-	unsigned int i;
+	size_t i;
 
 	k = (key->type == IFACE_KEY_CHAR) ? key->key.ucs : key->key.func;
 
-	for (i = 0; i < COMMANDS_NUM; i++)
+	for (i = 0; i < COMMANDS_NUM; i += 1) {
 		if (commands[i].context == context) {
 			int j = 0;
 
-			while (commands[i].keys[j] != -1)
+			while (commands[i].keys[j] != -1) {
 				if (commands[i].keys[j++] == k)
 					return commands[i].cmd;
+			}
 		}
+	}
 
 	return KEY_CMD_WRONG;
 }
@@ -947,12 +952,20 @@ static void keymap_parse_error (const int line, const char *msg)
  * Return -1 on error. */
 static int parse_key (const char *symbol)
 {
-	unsigned int i;
+	size_t i;
 
-	if (strlen(symbol) == 1)
-
+	if (strlen(symbol) == 1) {
 		/* Just a regular char */
+		static bool digit_key_warned = false;
+		if (!digit_key_warned && isdigit (symbol[0])) {
+			fprintf (stderr,
+			         "\n\tUsing digits as keys is deprecated as they may"
+			         "\n\tbe used for specific purposes in release 2.6.\n");
+			sleep (5);
+			digit_key_warned = true;
+		}
 		return symbol[0];
+	}
 
 	if (symbol[0] == '^') {
 
@@ -973,9 +986,10 @@ static int parse_key (const char *symbol)
 	}
 
 	/* Special keys. */
-	for (i = 0; i < SPECIAL_KEYS_NUM; i++)
+	for (i = 0; i < SPECIAL_KEYS_NUM; i += 1) {
 		if (!strcasecmp(special_keys[i].name, symbol))
 			return special_keys[i].key;
+	}
 
 	return -1;
 }
@@ -983,9 +997,9 @@ static int parse_key (const char *symbol)
 /* Remove a single key from the default key definition for a command. */
 static void clear_default_key (int key)
 {
-	unsigned int cmd_ix;
+	size_t cmd_ix;
 
-	for (cmd_ix = 0; cmd_ix < COMMANDS_NUM; cmd_ix++) {
+	for (cmd_ix = 0; cmd_ix < COMMANDS_NUM; cmd_ix += 1) {
 		int key_ix;
 
 		for (key_ix = 0; key_ix < commands[cmd_ix].default_keys; key_ix++) {
@@ -996,7 +1010,7 @@ static void clear_default_key (int key)
 		if (key_ix == commands[cmd_ix].default_keys)
 				continue;
 
-		while (key_ix < commands[cmd_ix].default_keys) {
+		while (commands[cmd_ix].keys[key_ix] != -1) {
 			commands[cmd_ix].keys[key_ix] = commands[cmd_ix].keys[key_ix + 1];
 			key_ix += 1;
 		}
@@ -1008,55 +1022,53 @@ static void clear_default_key (int key)
 }
 
 /* Remove default keys definition for a command. Return 0 on error. */
-static int clear_default_keys (const char *command)
+static void clear_default_keys (size_t cmd_ix)
 {
-	unsigned int cmd_idx;
+	assert (cmd_ix < COMMANDS_NUM);
 
-	/* Find the command */
-	for (cmd_idx = 0; cmd_idx < COMMANDS_NUM; cmd_idx++)
-		if (!(strcasecmp(commands[cmd_idx].name, command)))
-			break;
-
-	if (cmd_idx == COMMANDS_NUM)
-		return 0;
-
-	commands[cmd_idx].default_keys = 0;
-	commands[cmd_idx].keys[0] = -1;
-
-	return 1;
+	commands[cmd_ix].default_keys = 0;
+	commands[cmd_ix].keys[0] = -1;
 }
 
 /* Add a key to the command defined in the keymap file in line
  * line_num (used only when reporting an error). */
-static void add_key (const int line_num, const char *command,
-		const char *key_symbol)
+static void add_key (const int line_num, size_t cmd_ix, const char *key_symbol)
 {
-	unsigned int cmd_idx;
-	int i;
-	int key;
+	int i, key;
 
-	/* Find the command */
-	for (cmd_idx = 0; cmd_idx < COMMANDS_NUM; cmd_idx++)
-		if (!(strcasecmp(commands[cmd_idx].name, command)))
-			break;
+	assert (cmd_ix < COMMANDS_NUM);
 
-	if (cmd_idx == COMMANDS_NUM)
-		keymap_parse_error (line_num, "unknown command");
-
-	/* Go to the last key */
-	for (i = 0; commands[cmd_idx].keys[i] != -1; i++)
-		;
-
-	if (i == sizeof(commands[cmd_idx].keys)
-			/sizeof(commands[cmd_idx].keys[0]) - 2)
-		keymap_parse_error (line_num, "too many keys defined");
-
-	if ((key = parse_key(key_symbol)) == -1)
+	key = parse_key (key_symbol);
+	if (key == -1)
 		keymap_parse_error (line_num, "bad key sequence");
 
 	clear_default_key (key);
-	commands[cmd_idx].keys[i] = key;
-	commands[cmd_idx].keys[i+1] = -1;
+
+	for (i = commands[cmd_ix].default_keys;
+	     commands[cmd_ix].keys[i] != -1;
+	     i += 1) {
+		if (commands[cmd_ix].keys[i] == key)
+			return;
+	}
+
+	if (i == ARRAY_SIZE(commands[cmd_ix].keys) - 1)
+		keymap_parse_error (line_num, "too many keys defined");
+
+	commands[cmd_ix].keys[i] = key;
+	commands[cmd_ix].keys[i + 1] = -1;
+}
+
+/* Find command entry by command name; return COMMANDS_NUM if not found. */
+static size_t find_command_name (const char *command)
+{
+	size_t result;
+
+	for (result = 0; result < COMMANDS_NUM; result += 1) {
+		if (!(strcasecmp(commands[result].name, command)))
+			break;
+	}
+
+	return result;
 }
 
 /* Load a key map from the file. */
@@ -1065,6 +1077,7 @@ static void load_key_map (const char *file_name)
 	FILE *file;
 	char *line;
 	int line_num = 0;
+	size_t cmd_ix;
 
 	if (!(file = fopen(file_name, "r")))
 		fatal ("Can't open keymap file: %s", strerror(errno));
@@ -1073,9 +1086,7 @@ static void load_key_map (const char *file_name)
 	 * COMMAND = KEY [KEY ...]
 	 * Blank lines and beginning with # are ignored, see example_keymap. */
 	while ((line = read_line(file))) {
-		char *command;
-		char *tmp;
-		char *key;
+		char *command, *tmp, *key;
 
 		line_num++;
 		if (line[0] == '#' || !(command = strtok(line, " \t"))) {
@@ -1085,15 +1096,22 @@ static void load_key_map (const char *file_name)
 			continue;
 		}
 
-		if (!(tmp = strtok(NULL, " \t")) || strcmp(tmp, "="))
-			keymap_parse_error (line_num, "expected '='");
-
-		if (!clear_default_keys(command))
+		cmd_ix = find_command_name (command);
+		if (cmd_ix == COMMANDS_NUM)
 			keymap_parse_error (line_num, "unknown command");
 
-		while ((key = strtok(NULL, " \t"))) {
-			add_key (line_num, command, key);
+		tmp = strtok(NULL, " \t");
+		if (!tmp || (strcmp(tmp, "=") && strcmp(tmp, "+=")))
+			keymap_parse_error (line_num, "expected '=' or '+='");
+
+		if (strcmp(tmp, "+=")) {
+			if (commands[cmd_ix].keys[commands[cmd_ix].default_keys] != -1)
+				keymap_parse_error (line_num, "command previously bound");
+			clear_default_keys (cmd_ix);
 		}
+
+		while ((key = strtok(NULL, " \t")))
+			add_key (line_num, cmd_ix, key);
 
 		free (line);
 	}
@@ -1105,13 +1123,14 @@ static void load_key_map (const char *file_name)
  * Returned memory may be static. */
 static char *get_key_name (const int key)
 {
-	unsigned int i;
+	size_t i;
 	static char key_str[4];
 
 	/* Search for special keys */
-	for (i = 0; i < SPECIAL_KEYS_NUM; i++)
+	for (i = 0; i < SPECIAL_KEYS_NUM; i += 1) {
 		if (special_keys[i].key == key)
 			return special_keys[i].name;
+	}
 
 	/* CTRL combination */
 	if (!(key & ~CTRL_KEY_CODE)) {
@@ -1159,13 +1178,13 @@ static void compare_keys (struct command *cmd1, struct command *cmd2)
 /* Check that no key is defined more than once. */
 static void check_keys ()
 {
-	unsigned int i, j;
+	size_t i, j;
 
-	for (i = 0; i < COMMANDS_NUM; i++) {
-		for (j = 0; j < COMMANDS_NUM; j++)
-			if (j != i && commands[i].context
-					== commands[j].context)
+	for (i = 0; i < COMMANDS_NUM; i += 1) {
+		for (j = 0; j < COMMANDS_NUM; j += 1) {
+			if (j != i && commands[i].context == commands[j].context)
 				compare_keys (&commands[i], &commands[j]);
+		}
 	}
 }
 
@@ -1195,16 +1214,23 @@ static char *get_command_keys (const int idx)
 /* Make the help message for keys. */
 static void make_help ()
 {
-	unsigned int i;
+	size_t i;
+	const char unassigned[] = " [unassigned]";
 
-	for (i = 0; i < COMMANDS_NUM; i++) {
-		help[i] = xmalloc (sizeof(char) *
-				(HELP_INDENT + strlen(commands[i].help) + 1));
+	for (i = 0; i < COMMANDS_NUM; i += 1) {
+		size_t len;
+
+		len = HELP_INDENT + strlen (commands[i].help) + 1;
+		if (commands[i].keys[0] == -1)
+			len += strlen (unassigned);
+		help[i] = xcalloc (sizeof(char), len);
 		strncpy (help[i], get_command_keys(i), HELP_INDENT);
 		if (strlen(help[i]) < HELP_INDENT)
 			memset (help[i] + strlen(help[i]), ' ',
 					HELP_INDENT - strlen(help[i]));
 		strcpy (help[i] + HELP_INDENT, commands[i].help);
+		if (commands[i].keys[0] == -1)
+			strcat (help[i], unassigned);
 	}
 }
 
@@ -1221,12 +1247,12 @@ void keys_init ()
 	make_help ();
 }
 
-/* Free the help message */
+/* Free the help message. */
 void keys_cleanup ()
 {
-	unsigned int i;
+	size_t i;
 
-	for (i = 0; i < COMMANDS_NUM; i++)
+	for (i = 0; i < COMMANDS_NUM; i += 1)
 		free (help[i]);
 }
 
@@ -1234,27 +1260,31 @@ void keys_cleanup ()
  * in num. */
 char **get_keys_help (int *num)
 {
-	*num = COMMANDS_NUM;
+	*num = (int) COMMANDS_NUM;
 	return help;
 }
 
-static int find_command (const enum key_cmd cmd)
+/* Find command entry by key command; return COMMANDS_NUM if not found. */
+static size_t find_command_cmd (const enum key_cmd cmd)
 {
-	unsigned int i;
+	size_t result;
 
-	for (i = 0; i < COMMANDS_NUM; i++)
-		if (commands[i].cmd == cmd)
-			return i;
+	for (result = 0; result < COMMANDS_NUM; result += 1) {
+		if (commands[result].cmd == cmd)
+			break;
+	}
 
-	return -1;
+	return result;
 }
 
 /* Return true iff the help key is still 'h'. */
 bool is_help_still_h ()
 {
-	int i = find_command (KEY_CMD_HELP);
+	size_t cmd_ix;
 
-	assert (i != -1);
+	cmd_ix = find_command_cmd (KEY_CMD_HELP);
 
-	return commands[i].keys[0] == 'h';
+	assert (cmd_ix < COMMANDS_NUM);
+
+	return commands[cmd_ix].keys[0] == 'h';
 }

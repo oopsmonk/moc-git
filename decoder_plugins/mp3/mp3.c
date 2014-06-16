@@ -23,6 +23,7 @@
 
 #include <unistd.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include <errno.h>
 #include <string.h>
 #include <strings.h>
@@ -226,8 +227,7 @@ static int count_time_internal (struct mp3_data *data)
 				continue;
 			else {
 				debug ("Can't decode header: %s",
-						mad_stream_errorstr(
-							&data->stream));
+				        mad_stream_errorstr(&data->stream));
 				break;
 			}
 		}
@@ -248,16 +248,14 @@ static int count_time_internal (struct mp3_data *data)
 					num_frames = xing.frames;
 					break;
 				}
-				debug ("XING header doesn't contain number of "
-						"frames.");
+				debug ("XING header doesn't contain number of frames.");
 			}
 		}
 
 		/* Test the first n frames to see if this is a VBR file */
 		if (!is_vbr && !(num_frames > 20)) {
 			if (bitrate && header.bitrate != bitrate) {
-				debug ("Detected VBR after %d frames",
-						num_frames);
+				debug ("Detected VBR after %d frames", num_frames);
 				is_vbr = 1;
 			}
 			else
@@ -277,6 +275,11 @@ static int count_time_internal (struct mp3_data *data)
 
 	if (!good_header)
 		return -1;
+
+	if (data->size == -1) {
+		mad_header_finish(&header);
+		return -1;
+	}
 
 	if (!is_vbr) {
 		/* time in seconds */
@@ -304,8 +307,7 @@ static int count_time_internal (struct mp3_data *data)
 	else {
 		/* the durations have been added up, and the number of frames
 		   counted. We do nothing here. */
-		debug ("Counted duration by counting frames durations in "
-				"VBR file.");
+		debug ("Counted duration by counting frames durations in VBR file.");
 	}
 
 	if (data->avg_bitrate == -1
@@ -358,10 +360,8 @@ static struct mp3_data *mp3_open_internal (const char *file,
 		data->stream.sync = 0;
 		data->stream.error = MAD_ERROR_NONE;
 
-		if (io_seek(data->io_stream, 0, SEEK_SET) == (off_t)-1) {
-			decoder_error (&data->error, ERROR_FATAL, 0,
-						"seek failed");
-			io_close (data->io_stream);
+		if (io_seek(data->io_stream, 0, SEEK_SET) == -1) {
+			decoder_error (&data->error, ERROR_FATAL, 0, "seek failed");
 			mad_stream_finish (&data->stream);
 			mad_frame_finish (&data->frame);
 			mad_synth_finish (&data->synth);
@@ -373,7 +373,6 @@ static struct mp3_data *mp3_open_internal (const char *file,
 	else {
 		decoder_error (&data->error, ERROR_FATAL, 0, "Can't open: %s",
 				io_strerror(data->io_stream));
-		io_close (data->io_stream);
 	}
 
 	return data;
@@ -399,8 +398,7 @@ static void *mp3_open_stream (struct io_stream *stream)
 	data->bitrate = -1;
 	data->io_stream = stream;
 	data->duration = -1;
-
-	data->size = (off_t)-1;
+	data->size = -1;
 
 	mad_stream_init (&data->stream);
 	mad_frame_init (&data->frame);
@@ -418,11 +416,11 @@ static void mp3_close (void *void_data)
 	struct mp3_data *data = (struct mp3_data *)void_data;
 
 	if (data->ok) {
-		io_close (data->io_stream);
 		mad_stream_finish (&data->stream);
 		mad_frame_finish (&data->frame);
 		mad_synth_finish (&data->synth);
 	}
+	io_close (data->io_stream);
 	decoder_error_clear (&data->error);
 	free (data);
 }
@@ -452,7 +450,6 @@ static int count_time (const char *file)
 static void mp3_info (const char *file_name, struct file_tags *info,
 		const int tags_sel)
 {
-
 	if (tags_sel & TAGS_COMMENTS) {
 		struct id3_tag *tag;
 		struct id3_file *id3file;
@@ -578,12 +575,9 @@ static int mp3_decode (void *void_data, char *buf, int buf_len,
 					continue;
 
 				if (!data->skip_frames)
-					decoder_error (&data->error,
-							ERROR_STREAM, 0,
+					decoder_error (&data->error, ERROR_STREAM, 0,
 							"Broken frame: %s",
-							mad_stream_errorstr(
-								&data->stream)
-							);
+							mad_stream_errorstr(&data->stream));
 				continue;
 			}
 			else if (data->stream.error == MAD_ERROR_BUFLEN)
@@ -591,9 +585,7 @@ static int mp3_decode (void *void_data, char *buf, int buf_len,
 			else {
 				decoder_error (&data->error, ERROR_FATAL, 0,
 						"Broken frame: %s",
-						mad_stream_errorstr(
-							&data->stream)
-						);
+						mad_stream_errorstr(&data->stream));
 				return 0;
 			}
 		}
@@ -618,9 +610,8 @@ static int mp3_decode (void *void_data, char *buf, int buf_len,
 		if (data->frame.header.bitrate != data->bitrate) {
 			if ((data->bitrate = data->frame.header.bitrate) == 0) {
 				decoder_error (&data->error, ERROR_FATAL, 0,
-						"Broken file: information"
-						" about the bitrate couldn't"
-						" be read.");
+						"Broken file: information about the"
+						" bitrate couldn't be read.");
 				return 0;
 			}
 		}
@@ -636,9 +627,12 @@ static int mp3_decode (void *void_data, char *buf, int buf_len,
 static int mp3_seek (void *void_data, int sec)
 {
 	struct mp3_data *data = (struct mp3_data *)void_data;
-	int new_position;
+	off_t new_position;
 
 	assert (sec >= 0);
+
+	if (data->size == -1)
+		return -1;
 
 	if (sec >= data->duration)
 		return -1;
@@ -646,7 +640,7 @@ static int mp3_seek (void *void_data, int sec)
 	new_position = ((double) sec /
 			(double) data->duration) * data->size;
 
-	debug ("Seeking to %d (byte %d)", sec, new_position);
+	debug ("Seeking to %d (byte %"PRId64")", sec, new_position);
 
 	if (new_position < 0)
 		new_position = 0;
@@ -654,7 +648,7 @@ static int mp3_seek (void *void_data, int sec)
 		return -1;
 
 	if (io_seek(data->io_stream, new_position, SEEK_SET) == -1) {
-		logit ("seek to %d failed", new_position);
+		logit ("seek to %"PRId64" failed", new_position);
 		return -1;
 	}
 

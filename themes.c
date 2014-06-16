@@ -42,6 +42,8 @@
 # define COLOR_GREY	10
 #endif
 
+static char current_theme[PATH_MAX];
+
 static int colors[CLR_LAST];
 
 /* Counter used for making colors (init_pair()) */
@@ -155,7 +157,7 @@ static void theme_parse_error (const int line, const char *msg)
 /* Find the index of a color element by name. Return CLR_WRONG if not found. */
 static enum color_index find_color_element_name (const char *name)
 {
-	unsigned int i;
+	size_t ix;
 	static struct
 	{
 		char *name;
@@ -200,9 +202,9 @@ static enum color_index find_color_element_name (const char *name)
 
 	assert (name != NULL);
 
-	for (i = 0; i < (sizeof(color_tab)/sizeof(color_tab[0])); i++) {
-		if (!strcasecmp(color_tab[i].name, name))
-			return color_tab[i].idx;
+	for (ix = 0; ix < ARRAY_SIZE(color_tab); ix += 1) {
+		if (!strcasecmp(color_tab[ix].name, name))
+			return color_tab[ix].idx;
 	}
 
 	return CLR_WRONG;
@@ -211,7 +213,7 @@ static enum color_index find_color_element_name (const char *name)
 /* Find the curses color by name. Return -1 if the color is unknown. */
 static short find_color_name (const char *name)
 {
-	unsigned int i;
+	size_t ix;
 	static struct
 	{
 		char *name;
@@ -229,9 +231,9 @@ static short find_color_name (const char *name)
 		{ "grey",	COLOR_GREY }
 	};
 
-	for (i = 0; i < (sizeof(color_tab)/sizeof(color_tab[0])); i++) {
-		if (!strcasecmp(color_tab[i].name, name))
-			return color_tab[i].color;
+	for (ix = 0; ix < ARRAY_SIZE(color_tab); ix += 1) {
+		if (!strcasecmp(color_tab[ix].name, name))
+			return color_tab[ix].color;
 	}
 
 	return -1;
@@ -482,8 +484,7 @@ static int load_color_theme (const char *name, const int errors_are_fatal)
 
 	if (!(file = fopen(theme_file, "r"))) {
 		if (errors_are_fatal)
-			interface_fatal ("Can't open theme file: %s",
-					strerror(errno));
+			interface_fatal ("Can't open theme file: %s", strerror(errno));
 		return 0;
 	}
 
@@ -516,13 +517,24 @@ void theme_init (bool has_xterm)
 {
 	reset_colors_table ();
 
-	if (has_colors()) {
-		if (options_get_str("ForceTheme"))
-			load_color_theme (options_get_str("ForceTheme"), 1);
-		else if (has_xterm && options_get_str("XTermTheme"))
-			load_color_theme (options_get_str("XTermTheme"), 1);
-		else if (options_get_str("Theme"))
-			load_color_theme (options_get_str("Theme"), 1);
+	if (has_colors ()) {
+		char *file;
+
+		if ((file = options_get_str ("ForceTheme"))) {
+			load_color_theme (file, 1);
+			strncpy (current_theme, find_theme_file (file), PATH_MAX);
+		}
+		else if (has_xterm && (file = options_get_str ("XTermTheme"))) {
+			load_color_theme (file, 1);
+			strncpy (current_theme, find_theme_file (file), PATH_MAX);
+		}
+		else if ((file = options_get_str ("Theme"))) {
+			load_color_theme (file, 1);
+			strncpy (current_theme, find_theme_file (file), PATH_MAX);
+		}
+		else
+			snprintf (current_theme, PATH_MAX, "%s/example_theme",
+			                                   SYSTEM_THEMES_DIR);
 
 		set_default_colors ();
 	}
@@ -543,7 +555,14 @@ void themes_switch_theme (const char *file)
 			interface_error ("Error loading theme!");
 			reset_colors_table ();
 		}
+		else
+			strncpy (current_theme, file, PATH_MAX);
 
 		set_default_colors ();
 	}
+}
+
+const char *get_current_theme ()
+{
+	return current_theme;
 }

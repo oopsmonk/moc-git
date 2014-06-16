@@ -13,6 +13,8 @@
 #include "config.h"
 #endif
 
+#include <limits.h>
+#include <inttypes.h>
 #include <string.h>
 #include <strings.h>
 #include <stdio.h>
@@ -64,7 +66,7 @@ struct vorbis_data
 	int ok; /* was this stream successfully opened? */
 
 	int tags_change; /* the tags were changed from the last call of
-			    ogg_current_tags */
+	                    ogg_current_tags() */
 	struct file_tags *tags;
 };
 
@@ -101,32 +103,32 @@ static void get_comment_tags (OggVorbis_File *vf, struct file_tags *info)
 	}
 }
 
-/* Return a malloc()ed description of an ov_*() error. */
-static char *vorbis_strerror (const int code)
+/* Return a description of an ov_*() error. */
+static const char *vorbis_strerror (const int code)
 {
-	char *err;
+	const char *result;
 
 	switch (code) {
 		case OV_EREAD:
-			err = "read error";
+			result = "read error";
 			break;
 		case OV_ENOTVORBIS:
-			err = "not a vorbis file";
+			result = "not a vorbis file";
 			break;
 		case OV_EVERSION:
-			err = "vorbis version mismatch";
+			result = "vorbis version mismatch";
 			break;
 		case OV_EBADHEADER:
-			err = "invalid Vorbis bitstream header";
+			result = "invalid Vorbis bitstream header";
 			break;
 		case OV_EFAULT:
-			err = "internal (vorbis) logic fault";
+			result = "internal (vorbis) logic fault";
 			break;
 		default:
-			err = "unknown error";
+			result = "unknown error";
 	}
 
-	return xstrdup (err);
+	return result;
 }
 
 /* Fill info structure with data from ogg comments */
@@ -144,27 +146,15 @@ static void vorbis_tags (const char *file_name, struct file_tags *info,
 
 	/* ov_test() is faster than ov_open(), but we can't read file time
 	 * with it. */
-	if (tags_sel & TAGS_TIME) {
-		if ((err_code = ov_open(file, &vf, NULL, 0)) < 0) {
-			char *vorbis_err = vorbis_strerror (err_code);
+	if (tags_sel & TAGS_TIME)
+		err_code = ov_open(file, &vf, NULL, 0);
+	else
+		err_code = ov_test(file, &vf, NULL, 0);
 
-			logit ("Can't open %s: %s", file_name, vorbis_err);
-			free (vorbis_err);
-			fclose (file);
-
-			return;
-		}
-	}
-	else {
-		if ((err_code = ov_test(file, &vf, NULL, 0)) < 0) {
-			char *vorbis_err = vorbis_strerror (err_code);
-
-			logit ("Can't open %s: %s", file_name, vorbis_err);
-			free (vorbis_err);
-			fclose (file);
-
-			return;
-		}
+	if (err_code < 0) {
+		logit ("Can't open %s: %s", file_name, vorbis_strerror (err_code));
+		fclose (file);
+		return;
 	}
 
 	if (tags_sel & TAGS_COMMENTS)
@@ -204,10 +194,10 @@ static size_t read_callback (void *ptr, size_t size, size_t nmemb,
 
 static int seek_callback (void *datasource, ogg_int64_t offset, int whence)
 {
-	debug ("Seek request to %ld (%s)", (long)offset,
+	debug ("Seek request to %"PRId64" (%s)", offset,
 			whence == SEEK_SET ? "SEEK_SET"
 			: (whence == SEEK_CUR ? "SEEK_CUR" : "SEEK_END"));
-	return io_seek (datasource, offset, whence);
+	return io_seek (datasource, offset, whence) == -1 ? -1 : 0;
 }
 
 static int close_callback (void *datasource ATTR_UNUSED)
@@ -217,7 +207,7 @@ static int close_callback (void *datasource ATTR_UNUSED)
 
 static long tell_callback (void *datasource)
 {
-	return io_tell (datasource);
+	return (long)io_tell (datasource);
 }
 
 static void vorbis_open_stream_internal (struct vorbis_data *data)
@@ -234,14 +224,11 @@ static void vorbis_open_stream_internal (struct vorbis_data *data)
 
 	if ((res = ov_open_callbacks(data->stream, &data->vf, NULL, 0,
 					callbacks)) < 0) {
-		char *vorbis_err = vorbis_strerror (res);
+		const char *vorbis_err = vorbis_strerror (res);
 
-		decoder_error (&data->error, ERROR_FATAL, 0, "%s",
-				vorbis_err);
+		decoder_error (&data->error, ERROR_FATAL, 0, "%s", vorbis_err);
 		debug ("ov_open error: %s", vorbis_err);
-		free (vorbis_err);
 
-		io_close (data->stream);
 	}
 	else {
 		int64_t duration;
@@ -271,12 +258,19 @@ static void *vorbis_open (const char *file)
 	data->stream = io_open (file, 1);
 	if (!io_ok(data->stream)) {
 		decoder_error (&data->error, ERROR_FATAL, 0,
-				"Can't load OGG: %s",
-				io_strerror(data->stream));
-		io_close (data->stream);
+		               "Can't load OGG: %s", io_strerror(data->stream));
+		return data;
 	}
-	else
-		vorbis_open_stream_internal (data);
+
+	/* This a restriction placed on us by the vorbisfile API. */
+#if INT64_MAX > LONG_MAX
+	if (io_file_size (data->stream) > LONG_MAX) {
+		decoder_error (&data->error, ERROR_FATAL, 0, "File too large!");
+		return data;
+	}
+#endif
+
+	vorbis_open_stream_internal (data);
 
 	return data;
 }
@@ -312,9 +306,9 @@ static void vorbis_close (void *prv_data)
 
 	if (data->ok) {
 		ov_clear (&data->vf);
-		io_close (data->stream);
 	}
 
+	io_close (data->stream);
 	decoder_error_clear (&data->error);
 	if (data->tags)
 		tags_free (data->tags);
@@ -353,7 +347,7 @@ static int vorbis_decode (void *prv_data, char *buf, int buf_len,
 			return 0;
 		if (ret < 0) {
 			decoder_error (&data->error, ERROR_STREAM, 0,
-					"Error in the stream!");
+			               "Error in the stream!");
 			continue;
 		}
 

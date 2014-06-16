@@ -256,8 +256,7 @@ static long sfmt_best_matching (const long formats_with_endian,
 #ifdef DEBUG
 	debug ("Chose %s as the best matching %s",
 			sfmt_str(best, fmt_name1, sizeof(fmt_name1)),
-			sfmt_str(req_with_endian, fmt_name2,
-				sizeof(fmt_name2)));
+			sfmt_str(req_with_endian, fmt_name2, sizeof(fmt_name2)));
 #endif
 
 	return best;
@@ -721,12 +720,9 @@ int audio_open (struct sound_params *sound_params)
 			req_sound_params.fmt);
 
 	/* number of channels */
-	if (req_sound_params.channels > hw_caps.max_channels)
-		driver_sound_params.channels = hw_caps.max_channels;
-	else if (req_sound_params.channels < hw_caps.min_channels)
-		driver_sound_params.channels = hw_caps.min_channels;
-	else
-		driver_sound_params.channels = req_sound_params.channels;
+	driver_sound_params.channels = CLAMP(hw_caps.min_channels,
+	                                     req_sound_params.channels,
+	                                     hw_caps.max_channels);
 
 	res = hw.open (&driver_sound_params);
 
@@ -752,13 +748,11 @@ int audio_open (struct sound_params *sound_params)
 		audio_opened = 1;
 
 		logit ("Requested sound parameters: %s, %d channels, %dHz",
-				sfmt_str(req_sound_params.fmt, fmt_name,
-					sizeof(fmt_name)),
+				sfmt_str(req_sound_params.fmt, fmt_name, sizeof(fmt_name)),
 				req_sound_params.channels,
 				req_sound_params.rate);
 		logit ("Driver sound parameters: %s, %d channels, %dHz",
-				sfmt_str(driver_sound_params.fmt, fmt_name,
-					sizeof(fmt_name)),
+				sfmt_str(driver_sound_params.fmt, fmt_name, sizeof(fmt_name)),
 				driver_sound_params.channels,
 				driver_sound_params.rate);
 	}
@@ -958,8 +952,7 @@ void audio_initialize ()
 	print_output_capabilities (&hw_caps);
 	if (!options_get_int("Allow24bitOutput")
 			&& hw_caps.formats & (SFMT_S32 | SFMT_U32)) {
-		logit ("Disabling 24bit modes because Allow24bitOutput is set "
-				"to no.");
+		logit ("Disabling 24bit modes because Allow24bitOutput is set to no.");
 		hw_caps.formats &= ~(SFMT_S32 | SFMT_U32);
 	}
 
@@ -1055,8 +1048,7 @@ void audio_plist_add (const char *file)
 	if (plist_find_fname(&playlist, file) == -1)
 		plist_add (&playlist, file);
 	else
-		logit ("Wanted to add a file that is already present on the "
-				"list: %s", file);
+		logit ("Wanted to add a file already present: %s", file);
 	UNLOCK (plist_mut);
 }
 
@@ -1066,8 +1058,7 @@ void audio_queue_add (const char *file)
 	if (plist_find_fname(&queue, file) == -1)
 		plist_add (&queue, file);
 	else
-		logit ("Wanted to add a file that is already present in the "
-				"queue: %s", file);
+		logit ("Wanted to add a file already present: %s", file);
 	UNLOCK (plist_mut);
 }
 

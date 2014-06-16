@@ -29,7 +29,8 @@
 #include "log.h"
 #include "io.h"
 
-/* by LEGACY_FLAC we mean pre-1.1.3, before FLAC__SeekableStreamDecoder was merged into FLAC__StreamDecoder */
+/* By LEGACY_FLAC we mean pre-1.1.3, before FLAC__SeekableStreamDecoder
+ * was merged into FLAC__StreamDecoder. */
 #if !defined(FLAC_API_VERSION_CURRENT) || FLAC_API_VERSION_CURRENT < 8
 #define LEGACY_FLAC
 #else
@@ -115,8 +116,7 @@ static size_t pack_pcm_signed (FLAC__byte *data,
 		}
 	}
 
-	debug ("Converted %d bytes",
-			wide_samples * channels * bytes_per_sample);
+	debug ("Converted %u bytes", wide_samples * channels * bytes_per_sample);
 
 	return wide_samples * channels * bytes_per_sample;
 }
@@ -274,9 +274,19 @@ static FLAC__StreamDecoderLengthStatus length_callback (
 		FLAC__uint64 *stream_length, void *client_data)
 #endif
 {
+	off_t file_size;
 	struct flac_data *data = (struct flac_data *)client_data;
 
-	*stream_length = io_file_size (data->stream);
+	file_size = io_file_size (data->stream);
+	if (file_size == -1)
+#ifdef LEGACY_FLAC
+		return FLAC__SEEKABLE_STREAM_DECODER_LENGTH_STATUS_ERROR;
+#else
+		return FLAC__STREAM_DECODER_LENGTH_STATUS_ERROR;
+#endif
+
+	*stream_length = file_size;
+
 #ifdef LEGACY_FLAC
 	return FLAC__SEEKABLE_STREAM_DECODER_LENGTH_STATUS_OK;
 #else
@@ -315,8 +325,7 @@ static void *flac_open_internal (const char *file, const int buffered)
 	data->stream = io_open (file, buffered);
 	if (!io_ok(data->stream)) {
 		decoder_error (&data->error, ERROR_FATAL, 0,
-				"Can't load file: %s",
-				io_strerror(data->stream));
+				"Can't load file: %s", io_strerror(data->stream));
 		return data;
 	}
 
@@ -386,14 +395,13 @@ static void *flac_open_internal (const char *file, const int buffered)
 
 	if (!FLAC__stream_decoder_process_until_end_of_metadata(data->decoder)) {
 		decoder_error (&data->error, ERROR_FATAL, 0,
-				"FLAC__stream_decoder_process_until_end_of_metadata()"
-				" failed.");
+				"FLAC__stream_decoder_process_until_end_of_metadata() failed.");
 		return data;
 	}
 #endif
 
 	data->ok = 1;
-	data->avg_bitrate = (data->bits_per_sample) * data->sample_rate;
+	data->avg_bitrate = data->bits_per_sample * data->sample_rate;
 
 	return data;
 }

@@ -131,8 +131,8 @@ static void check_moc_dir ()
 						dir_name, strerror (errno));
 		}
 		else
-			fatal ("Error trying to check for "CONFIG_DIR
-					" directory: %s", strerror (errno));
+			fatal ("Error trying to check for "CONFIG_DIR" directory: %s",
+			        strerror (errno));
 	}
 	else {
 		if (!S_ISDIR(file_stat.st_mode) || access (dir_name, W_OK))
@@ -142,10 +142,16 @@ static void check_moc_dir ()
 
 static void sig_chld (int sig ATTR_UNUSED)
 {
-	logit ("Got SIGCHLD");
+	int saved_errno;
+	pid_t rc;
 
-	while (waitpid(-1, NULL, WNOHANG) > 0)
-		;
+	log_signal (sig);
+
+	saved_errno = errno;
+	do {
+		rc = waitpid (-1, NULL, WNOHANG);
+	} while (rc > 0);
+	errno = saved_errno;
 }
 
 /* Run client and the server if needed. */
@@ -184,7 +190,7 @@ static void start_moc (const struct parameters *params, lists_t_strs *args)
 				files_cleanup ();
 				rcc_cleanup ();
 				compat_cleanup ();
-				exit (0);
+				exit (EXIT_SUCCESS);
 			case -1:
 				fatal ("fork() failed: %s", strerror(errno));
 			default:
@@ -285,7 +291,7 @@ static void show_version ()
 	printf ("           Author : Damian Pietras\n");
 	printf ("         Homepage : %s\n", PACKAGE_URL);
 	printf ("           E-Mail : %s\n", PACKAGE_BUGREPORT);
-	printf ("        Copyright : (C) 2003-2012 Damian Pietras and others\n");
+	printf ("        Copyright : (C) 2003-2014 Damian Pietras and others\n");
 	printf ("          License : GNU General Public License, version 2 or later\n");
 	putchar ('\n');
 }
@@ -494,7 +500,7 @@ static void override_config_option (const char *optarg, lists_t_strs *deferred)
 	append = (ptr > optarg && *(ptr - 1) == '+');
 
 	name = trim (optarg, ptr - optarg - (append ? 1 : 0));
-	if (!name || strlen (name) == 0)
+	if (!name || !name[0])
 		goto error;
 	type = options_get_type (name);
 
@@ -509,7 +515,7 @@ static void override_config_option (const char *optarg, lists_t_strs *deferred)
 		goto error;
 
 	value = trim (ptr + 1, strlen (ptr + 1));
-	if (!value || strlen (value) == 0)
+	if (!value || !value[0])
 		goto error;
 
 	if (value[0] == '\'' || value[0] == '"') {
@@ -633,10 +639,10 @@ static lists_t_strs *process_command_line (int argc, char *argv[],
 		switch (ret) {
 			case 'V':
 				show_version ();
-				exit (0);
+				exit (EXIT_SUCCESS);
 			case 'h':
 				show_usage (argv[0]);
-				exit (0);
+				exit (EXIT_SUCCESS);
 #ifndef NDEBUG
 			case 'D':
 				params->debug = 1;
@@ -752,7 +758,7 @@ static lists_t_strs *process_command_line (int argc, char *argv[],
 						}
 				//TODO: Add message explaining the error
 				show_usage (argv[0]);
-				exit (1);
+				exit (EXIT_FAILURE);
 			case 'v' :
 				params->adj_volume = optarg;
 				params->dont_run_iface = 1;
@@ -780,7 +786,7 @@ static lists_t_strs *process_command_line (int argc, char *argv[],
 				break;
 			default:
 				show_usage (argv[0]);
-				exit (1);
+				exit (EXIT_FAILURE);
 		}
 	}
 
@@ -868,5 +874,5 @@ int main (int argc, char *argv[])
 	files_cleanup ();
 	compat_cleanup ();
 
-	return 0;
+	exit (EXIT_SUCCESS);
 }

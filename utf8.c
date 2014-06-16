@@ -283,11 +283,10 @@ int xwprintw (WINDOW *win, const char *fmt, ...)
 {
 	va_list va;
 	int res;
-	char buf[1024];
+	char *buf;
 
 	va_start (va, fmt);
-	vsnprintf (buf, sizeof(buf), fmt, va);
-	buf[sizeof(buf)-1] = 0;
+	buf = format_msg_va (fmt, va);
 	va_end (va);
 
 	if (using_utf8)
@@ -298,6 +297,8 @@ int xwprintw (WINDOW *win, const char *fmt, ...)
 		res = waddstr (win, lstr);
 		free (lstr);
 	}
+
+	free (buf);
 
 	return res;
 }
@@ -322,8 +323,7 @@ void utf8_init ()
 		using_utf8 = 1;
 #else /* HAVE_NCURSESW */
 		terminal_charset = xstrdup ("US-ASCII");
-		logit ("Using US-ASCII conversion - compiled without "
-				"libncursesw");
+		logit ("Using US-ASCII conversion - compiled without libncursesw");
 #endif /* HAVE_NCURSESW */
 	}
 	else
@@ -341,15 +341,10 @@ void utf8_init ()
 	}
 
 	if (options_get_int ("FileNamesIconv"))
-	{
 		files_iconv_desc = iconv_open ("UTF-8", "");
-	}
 
 	if (options_get_int ("NonUTFXterm"))
-	{
 		xterm_iconv_desc = iconv_open ("", "UTF-8");
-	}
-
 }
 
 void utf8_cleanup ()

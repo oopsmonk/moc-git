@@ -15,6 +15,7 @@
 
 #include <pthread.h>
 #include <string.h>
+#include <stdint.h>
 #include <errno.h>
 #include <assert.h>
 
@@ -33,8 +34,8 @@
 #include "md5.h"
 #include "protocol.h"
 
-#define PCM_BUF_SIZE		(32 * 1024)
-#define PREBUFFER_THRESHOLD	(16 * 1024)
+#define PCM_BUF_SIZE		(36 * 1024)
+#define PREBUFFER_THRESHOLD	(18 * 1024)
 
 enum request
 {
@@ -188,8 +189,7 @@ static void bitrate_list_add (struct bitrate_list *b, const int time,
 				" hasn't changed", bitrate, time);
 	else
 		debug ("Not adding bitrate %d at time %d because it is for"
-				" the same time as the last bitrate", bitrate,
-				time);
+				" the same time as the last bitrate", bitrate, time);
 	UNLOCK (b->mutex);
 }
 
@@ -205,8 +205,7 @@ static int bitrate_list_get (struct bitrate_list *b, const int time)
 			struct bitrate_list_node *o = b->head;
 
 			b->head = o->next;
-			debug ("Removing old bitrate %d for time %d",
-					o->bitrate, o->time);
+			debug ("Removing old bitrate %d for time %d", o->bitrate, o->time);
 			free (o);
 		}
 
@@ -214,8 +213,7 @@ static int bitrate_list_get (struct bitrate_list *b, const int time)
 		debug ("Getting bitrate for time %d (%d)", time, bitrate);
 	}
 	else {
-		debug ("Getting bitrate for time %d (no bitrate information)",
-				time);
+		debug ("Getting bitrate for time %d (no bitrate information)", time);
 		bitrate = -1;
 	}
 	UNLOCK (b->mutex);
@@ -452,7 +450,7 @@ static void decode_loop (const struct decoder *f, void *decoder_data,
 	struct sound_params new_sound_params;
 	bool sound_params_change = false;
 	float decode_time = already_decoded_sec; /* the position of the decoder
-						    (in seconds) */
+	                                            (in seconds) */
 
 	out_buf_set_free_callback (out_buf, buf_free_callback);
 
@@ -740,7 +738,7 @@ static void play_file (const char *file, const struct decoder *f,
 		if (err.type != ERROR_OK) {
 			md5.okay = false;
 			if (err.type != ERROR_STREAM ||
-			    options_get_bool ( "ShowStreamErrors"))
+			    options_get_bool ("ShowStreamErrors"))
 				error ("%s", err.err);
 			decoder_error_clear (&err);
 		}
@@ -838,8 +836,8 @@ static void fill_callback (struct io_stream *s ATTR_UNUSED, size_t fill,
 	if (prebuffering) {
 		char msg[32];
 
-		sprintf (msg, "Prebuffering %d/%d KB", (int)(fill / 1024),
-				options_get_int("Prebuffering"));
+		sprintf (msg, "Prebuffering %zu/%d KB", fill / 1024U,
+		              options_get_int("Prebuffering"));
 		status_msg (msg);
 	}
 }
@@ -857,9 +855,9 @@ void player (const char *file, const char *next_file, struct out_buf *out_buf)
 		LOCK (decoder_stream_mut);
 		decoder_stream = io_open (file, 1);
 		if (!io_ok(decoder_stream)) {
-			error ("Could not open URL: %s",
-					io_strerror(decoder_stream));
+			error ("Could not open URL: %s", io_strerror(decoder_stream));
 			io_close (decoder_stream);
+			status_msg ("");
 			decoder_stream = NULL;
 			UNLOCK (decoder_stream_mut);
 			return;

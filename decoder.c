@@ -14,7 +14,6 @@
 #endif
 
 #include <stdio.h>
-#include <stddef.h>
 #include <string.h>
 #include <stdarg.h>
 #include <errno.h>
@@ -35,7 +34,7 @@ static struct plugin {
 	struct decoder *decoder;
 } plugins[16];
 
-#define PLUGINS_NUM			(sizeof(plugins)/sizeof(plugins[0]))
+#define PLUGINS_NUM			(ARRAY_SIZE(plugins))
 
 static int plugins_num = 0;
 
@@ -377,11 +376,24 @@ static char *list_decoder_names (int *decoder_list, int count)
 	names = lists_strs_new (count);
 	for (ix = 0; ix < count; ix += 1)
 		lists_strs_append (names, plugins[decoder_list[ix]].name);
+
 	if (have_tremor) {
 		ix = lists_strs_find (names, "vorbis");
 		if (ix < lists_strs_size (names))
 			lists_strs_replace (names, ix, "vorbis(tremor)");
 	}
+
+	ix = lists_strs_find (names, "ffmpeg");
+	if (ix < lists_strs_size (names)) {
+#if defined(HAVE_FFMPEG)
+			lists_strs_replace (names, ix, "ffmpeg");
+#elif defined(HAVE_LIBAV)
+			lists_strs_replace (names, ix, "ffmpeg(libav)");
+#else
+			lists_strs_replace (names, ix, "ffmpeg/libav");
+#endif
+	}
+
 	result = lists_strs_fmt (names, " %s");
 	lists_strs_free (names);
 
@@ -713,7 +725,7 @@ void decoder_error (struct decoder_error *error,
 		const char *format, ...)
 {
 	char errno_buf[256] = "";
-	char err_str[256];
+	char *err_str;
 	va_list va;
 
 	if (error->err)
@@ -722,18 +734,15 @@ void decoder_error (struct decoder_error *error,
 	error->type = type;
 
 	va_start (va, format);
-	vsnprintf (err_str, sizeof(err_str), format, va);
-	err_str[sizeof(err_str)-1] = 0;
+	err_str = format_msg_va (format, va);
+	va_end (va);
 
 	if (add_errno)
 		strerror_r(add_errno, errno_buf, sizeof(errno_buf));
 
-	error->err = (char *)xmalloc (sizeof(char) *
-			(strlen(err_str) + strlen(errno_buf) + 1));
-	strcpy (error->err, err_str);
-	strcat (error->err, errno_buf);
+	error->err = format_msg ("%s%s", err_str, errno_buf);
 
-	va_end (va);
+	free (err_str);
 }
 
 /* Initialize the decoder_error structure. */
@@ -758,4 +767,10 @@ void decoder_error_copy (struct decoder_error *dst,
 {
 	dst->type = src->type;
 	dst->err = xstrdup (src->err);
+}
+
+/* Return the error text from the decoder_error variable. */
+const char *decoder_error_text (const struct decoder_error *error)
+{
+	return error->err;
 }

@@ -205,7 +205,6 @@ static char *cache_record_serialize (const struct cache_record *rec, int *len)
 	size_t album_len;
 	size_t title_len;
 
-
 	artist_len = strlen_null (rec->tags->artist);
 	album_len = strlen_null (rec->tags->album);
 	title_len = strlen_null (rec->tags->title);
@@ -313,7 +312,6 @@ static int cache_record_deserialize (struct cache_record *rec,
 			if (rec->tags->album)
 				free (rec->tags->album);
 			rec->tags->album = NULL;
-
 		}
 
 		if (rec->tags->time >= 0)
@@ -323,8 +321,7 @@ static int cache_record_deserialize (struct cache_record *rec,
 	return 1;
 
 err:
-	logit ("Cache record deserialization error at %ldB",
-	       (long) (p - serialized));
+	logit ("Cache record deserialization error at %tdB", p - serialized);
 	tags_free (rec->tags);
 	rec->tags = NULL;
 	return 0;
@@ -418,9 +415,17 @@ static void tags_cache_gc (struct tags_cache *c)
 	key.flags = DB_DBT_MALLOC;
 	serialized_cache_rec.flags = DB_DBT_MALLOC;
 
-	while ((ret = cur->c_get (cur, &key, &serialized_cache_rec, DB_NEXT))
-			== 0) {
+	while (true) {
 		struct cache_record rec;
+
+#if DB_VERSION_MAJOR == 4 && DB_VERSION_MINOR < 6
+		ret = cur->c_get (cur, &key, &serialized_cache_rec, DB_NEXT);
+#else
+		ret = cur->get (cur, &key, &serialized_cache_rec, DB_NEXT);
+#endif
+
+		if (ret != 0)
+			break;
 
 		if (cache_record_deserialize (&rec, serialized_cache_rec.data,
 					serialized_cache_rec.size, 1)
@@ -446,7 +451,11 @@ static void tags_cache_gc (struct tags_cache *c)
 		logit ("Searching for element to remove failed (cursor): %s",
 				db_strerror (ret));
 
+#if DB_VERSION_MAJOR == 4 && DB_VERSION_MINOR < 6
 	cur->c_close (cur);
+#else
+	cur->close (cur);
+#endif
 
 	debug ("Elements in cache: %d (limit %d)", nitems, c->max_items);
 
@@ -690,9 +699,11 @@ void tags_cache_init (struct tags_cache *c, size_t max_size)
 	for (i = 0; i < CLIENTS_MAX; i++)
 		request_queue_init (&c->queues[i]);
 
+#if CACHE_DB_FORMAT_VERSION
 	c->max_items = max_size;
-	if (CACHE_DB_FORMAT_VERSION == 0)
-		c->max_items = 0;
+#else
+	c->max_items = 0;
+#endif
 	c->stop_reader_thread = 0;
 	pthread_mutex_init (&c->mutex, NULL);
 
@@ -857,7 +868,7 @@ static void db_err_cb (const DB_ENV *dbenv ATTR_UNUSED, const char *errpfx,
 {
 	assert (msg);
 
-	if (errpfx && strlen (errpfx))
+	if (errpfx && errpfx[0])
 		logit ("BDB said: %s: %s", errpfx, msg);
 	else
 		logit ("BDB said: %s", msg);

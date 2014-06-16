@@ -25,12 +25,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <assert.h>
-#ifdef HAVE_STDINT_H
-# include <stdint.h>
-#endif
-#ifdef HAVE_INTTYPES_H
-# include <inttypes.h>
-#endif
+#include <stdint.h>
 
 #define DEBUG
 
@@ -39,9 +34,19 @@
 #include "io.h"
 #include "io_curl.h"
 #include "options.h"
+#include "lists.h"
+
+static char user_agent[] = PACKAGE_NAME"/"PACKAGE_VERSION;
 
 void io_curl_init ()
 {
+	char *ptr;
+
+	for (ptr = user_agent; *ptr; ptr += 1) {
+		if (*ptr == ' ')
+			*ptr = '-';
+	}
+
 	curl_global_init (CURL_GLOBAL_NOTHING);
 }
 
@@ -58,7 +63,7 @@ static size_t write_callback (void *data, size_t size, size_t nmemb,
 	size_t data_size = size * nmemb;
 
 	s->curl.buf_fill += data_size;
-	debug ("Got %lu bytes", (unsigned long)data_size);
+	debug ("Got %zu bytes", data_size);
 	s->curl.buf = (char *)xrealloc (s->curl.buf, s->curl.buf_fill);
 	memcpy (s->curl.buf + buf_start, data, data_size);
 
@@ -80,7 +85,7 @@ static size_t header_callback (void *data, size_t size, size_t nmemb,
 	/* we dont need '\r\n', so cut it. */
 	header_size = sizeof(char) * (size * nmemb + 1 - 2);
 
-	/* copy the header to char* array*/
+	/* copy the header to char* array */
 	header = (char *)xmalloc (header_size);
 	memcpy (header, data, size * nmemb - 2);
 	header[header_size-1] = 0;
@@ -138,8 +143,7 @@ static size_t header_callback (void *data, size_t size, size_t nmemb,
 			logit ("Bad icy-metaint value");
 		}
 		else
-			debug ("Icy metadata interval: %ld",
-					(long)s->curl.icy_meta_int);
+			debug ("Icy metadata interval: %zu", s->curl.icy_meta_int);
 	}
 
 	free (header);
@@ -151,8 +155,10 @@ static size_t header_callback (void *data, size_t size, size_t nmemb,
 static int debug_callback (CURL *curl ATTR_UNUSED, curl_infotype i, char *msg,
 		size_t size, void *d ATTR_UNUSED)
 {
+	int ix;
 	char *log;
 	const char *type;
+	lists_t_strs *lines;
 
 	switch (i) {
 	case CURLINFO_TEXT:
@@ -170,11 +176,13 @@ static int debug_callback (CURL *curl ATTR_UNUSED, curl_infotype i, char *msg,
 
 	log = (char *)xmalloc (size + 1);
 	strncpy (log, msg, size);
-	if (size > 0 && log[size-1] == '\n')
-		log[size-1] = 0;
-	else
-		log[size] = 0;
-	debug ("CURL: [%s] %s", type, log);
+	log[size] = 0;
+
+	lines = lists_strs_new (8);
+	lists_strs_split (lines, log, "\n");
+	for (ix = 0; ix < lists_strs_size (lines); ix += 1)
+		debug ("CURL: [%s] %s", type, lists_strs_at (lines, ix));
+	lists_strs_free (lines);
 	free (log);
 
 	return 0;
@@ -196,8 +204,7 @@ static int check_curl_stream (struct io_stream *s)
 				debug ("Read error");
 				res = 0;
 			}
-			curl_multi_remove_handle (s->curl.multi_handle,
-					s->curl.handle);
+			curl_multi_remove_handle (s->curl.multi_handle, s->curl.handle);
 			curl_easy_cleanup (s->curl.handle);
 			s->curl.handle = NULL;
 			debug ("EOF");
@@ -251,8 +258,7 @@ void io_curl_open (struct io_stream *s, const char *url)
 	curl_easy_setopt (s->curl.handle, CURLOPT_HEADERFUNCTION,
 			header_callback);
 	curl_easy_setopt (s->curl.handle, CURLOPT_WRITEHEADER, s);
-	curl_easy_setopt (s->curl.handle, CURLOPT_USERAGENT,
-			PACKAGE_NAME"/"PACKAGE_VERSION);
+	curl_easy_setopt (s->curl.handle, CURLOPT_USERAGENT, user_agent);
 	curl_easy_setopt (s->curl.handle, CURLOPT_URL, s->curl.url);
 	curl_easy_setopt (s->curl.handle, CURLOPT_FOLLOWLOCATION, 1);
 	curl_easy_setopt (s->curl.handle, CURLOPT_FAILONERROR, 1);
@@ -591,8 +597,7 @@ ssize_t io_curl_read (struct io_stream *s, char *buf, size_t count)
 		if (s->curl.icy_meta_int)
 			s->curl.icy_meta_count += res;
 		nread += res;
-		debug ("Read %d bytes from the buffer (%d bytes full)",
-				(int)res, (int)nread);
+		debug ("Read %zu bytes from the buffer (%zu bytes full)", res, nread);
 
 		if (nread < count && !curl_read_internal(s))
 			return -1;
